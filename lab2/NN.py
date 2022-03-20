@@ -36,7 +36,12 @@ class FC_layer():
             db = np.sum(dy, axis=0) / self.batch_size
             
 
-        if opti.name == 'momentum':
+        if opti.name == 'SGD':
+            self.weight_matrix = self.weight_matrix - lr * dw
+            if self.bias:
+                self.bias_matrix = self.bias_matrix - lr * db
+        
+        elif opti.name == 'momentum':
             beta = opti.hyper_parameter['beta']
             if self.trained ==  0:
                 self.velocity = np.zeros((self.input_size, self.output_size))
@@ -58,7 +63,6 @@ class FC_layer():
             
             self.v = self.v + (dw ** 2)
             self.weight_matrix = self.weight_matrix - lr * dw / np.sqrt(self.v + epsilon)
-            
             if self.bias:
                 self.v_b = self.v_b + (db ** 2)
                 self.bias_matrix = self.bias_matrix - lr * db / np.sqrt(self.v_b + epsilon)      
@@ -108,7 +112,7 @@ class relu():
         return np.maximum(x, 0)
 
     def backward(self, dy:np.array, opti:optimizer):
-        dx = np.maximum(self.inputs, 0) * dy
+        dx = (self.inputs > 0) * dy
         return dx
 
 
