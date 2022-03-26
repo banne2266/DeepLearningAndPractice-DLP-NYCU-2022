@@ -1,5 +1,8 @@
 *.docx
 *.png
+*.vscode
+*.exe
+*weight*
 
 
 # Byte-compiled / optimized / DLL files
