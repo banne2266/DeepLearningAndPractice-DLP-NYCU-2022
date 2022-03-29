@@ -33,7 +33,7 @@
  */
 std::ostream& info = std::cout;
 std::ostream& error = std::cerr;
-std::ostream& debug = *(new std::ofstream("debug.txt"));
+std::ostream& debug = *(new std::ofstream());
 
 /**
  * 64-bit bitboard implementation for 2048
@@ -464,9 +464,13 @@ public:
 	 */
 	virtual float estimate(const board& b) const {
 		// TODO
-		(*this)[0];
-		return 0;
-
+		float value = 0;
+		for (int i = 0; i < iso_last; i++) {
+			size_t index = indexof(isomorphic[i], b);
+			value += operator[](index);
+			//value += weight[index];
+		}
+		return value;
 	}
 
 	/**
@@ -474,7 +478,14 @@ public:
 	 */
 	virtual float update(const board& b, float u) {
 		// TODO
-		return 0;
+		float u_split = u / iso_last;
+		float value = 0;
+		for (int i = 0; i < iso_last; i++) {
+			size_t index = indexof(isomorphic[i], b);
+			operator[](index) += u_split;
+			value += operator[](index);
+		}
+		return value;
 	}
 
 	/**
@@ -512,7 +523,10 @@ protected:
 
 	size_t indexof(const std::vector<int>& patt, const board& b) const {
 		// TODO
-		return 0;
+		size_t index = 0;
+		for (size_t i = 0; i < patt.size(); i++)
+			index |= b.at(patt[i]) << (4 * i);
+		return index;
 	}
 
 	std::string nameof(const std::vector<int>& patt) const {
@@ -683,8 +697,8 @@ public:
 		state* best = after;
 		for (state* move = after; move != after + 4; move++) {
 			if (move->assign(b)) {
-				// TODO
-				move->set_value(move->reward() + estimate(move->before_state()));
+				// TODO-V
+				move->set_value(move->reward() + estimate(move->after_state()) + (0.9 * 2 + 0.1 * 4));
 
 				if (move->value() > best->value())
 					best = move;
@@ -711,8 +725,18 @@ public:
 	 *  where (x,x,x,x) means (before state, after state, action, reward)
 	 */
 	void update_episode(std::vector<state>& path, float alpha = 0.1) const {
-		// TODO
+		// TODO-V
+		state& next_state = path.back();
+		float next_state_value = 0;
+		path.pop_back();
 
+		while(!path.empty()){
+			state& cur_state = path.back();
+			float error = cur_state.reward() + next_state_value - estimate(cur_state.before_state());
+			next_state_value = cur_state.reward() + update(cur_state.before_state(), alpha * error);
+			next_state = cur_state;
+			path.pop_back();
+		}
 	}
 
 	/**
@@ -832,7 +856,7 @@ int main(int argc, const char* argv[]) {
 
 	// set the learning parameters
 	float alpha = 0.1;
-	size_t total = 100000;
+	size_t total = 2000000;
 	unsigned seed;
 	__asm__ __volatile__ ("rdtsc" : "=a" (seed));
 	info << "alpha = " << alpha << std::endl;
@@ -846,12 +870,20 @@ int main(int argc, const char* argv[]) {
 	tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 6 }));
 	tdl.add_feature(new pattern({ 4, 5, 6, 8, 9, 10 }));
 
+	tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 8}));
+	tdl.add_feature(new pattern({ 0, 1, 2, 4, 8}));
+	tdl.add_feature(new pattern({ 0, 1, 4, 5}));
+	tdl.add_feature(new pattern({ 0, 1, 4}));
+
 	// restore the model from file
-	//tdl.load("weight.txt");
+	tdl.load("weight888");
 
 	// train the model
+	int best_score = 0;
 	std::vector<state> path;
 	path.reserve(20000);
+
+	std::vector<int> scores; 
 	for (size_t n = 1; n <= total; n++) {
 		board b;
 		int score = 0;
@@ -878,11 +910,28 @@ int main(int argc, const char* argv[]) {
 		// update by TD(0)
 		tdl.update_episode(path, alpha);
 		tdl.make_statistic(n, b, score);
+		if(score > best_score){
+			best_score = score;
+			std::cout << "Best score: " << best_score << std::endl;
+			tdl.save("best_weight888");
+		}
+		if(n % 1000 == 0)
+			tdl.save("weight888");
+		
+		if(n % 100000 == 0)
+			alpha = std::max(alpha/2, 0.001f);
+		scores.push_back(score);
 		path.clear();
 	}
 
+	
 	// store the model into file
-	tdl.save("weight.txt");
-
+	//tdl.save("weight");
+	std::ofstream out("scores.txt");
+	for(int i = 0; i < scores.size(); i++){
+		out << scores[i] << std::endl;
+	}
+	out.flush();
+	out.close();
 	return 0;
 }

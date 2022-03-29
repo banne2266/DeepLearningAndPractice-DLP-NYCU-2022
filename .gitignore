@@ -3,6 +3,7 @@
 *.vscode
 *.exe
 *weight*
+lab4/*.npz
 
 
 # Byte-compiled / optimized / DLL files
