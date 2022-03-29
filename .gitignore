@@ -1,8 +1,10 @@
 *.docx
 *.png
 *.vscode
-*.exe
-*weight*
+
+lab3/*weight*
+lab3/*.exe
+lab3/score*
 lab4/*.npz
 
 
