@@ -5,8 +5,10 @@
 lab3/*weight*
 lab3/*.exe
 lab3/score*
-lab4/*.npz
-
+lab4-1/*.npz
+lab4-2/*.csv
+lab4-2/data/*
+lab4-2/*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
