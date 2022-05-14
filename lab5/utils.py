@@ -134,7 +134,7 @@ def pred(validate_seq, validate_cond, modules, args, device):
 
     validate_seq = validate_seq.to(device)
     validate_seq = torch.transpose(validate_seq, 0, 1)#validate_seq = (seq_len, batch_size, c, h, w)
-    h_seq = [modules['encoder'](validate_seq[i]) for i in range(args.n_past + args.n_future)]
+    h_seq = [modules['encoder'](validate_seq[i]) for i in range(args.n_past)]
     
 
     pred = []

@@ -74,7 +74,7 @@ def main():
     encoder.to(device)
     decoder.to(device)
 
-    validate_data = bair_robot_pushing_dataset(args, 'validate', seq_len=args.n_past + args.n_future)
+    validate_data = bair_robot_pushing_dataset(args, 'test', seq_len=args.n_past + args.n_future)
     validate_loader = DataLoader(validate_data,
                                 num_workers=args.num_workers,
                                 batch_size=args.batch_size,
@@ -108,7 +108,7 @@ def main():
             ave_psnr = np.mean(np.concatenate(psnr))
             progress.update(1)
 
-    print(('====================== validate psnr = {:.5f} ========================\n'.format(ave_psnr)))
+    print(('====================== Test PSNR = {:.5f} ========================\n'.format(ave_psnr)))
 
 if __name__ == '__main__':
     main()

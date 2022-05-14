@@ -89,14 +89,14 @@ def train(x, cond, modules, optimizer, kl_anneal, args, device):
 
     for i in range(1, args.n_past + args.n_future):
         h_target = h_seq[i][0]
+        z_t, mu, logvar = modules['posterior'](h_target)
         
-        if use_teacher_forcing and i > args.n_past:
+        if not use_teacher_forcing and i > args.n_past:
             result = modules['encoder'](x_pred)
             h, skip = result
         else:
             h, skip = h_seq[i-1]
 
-        z_t, mu, logvar = modules['posterior'](h_target)
         h_pred = modules['frame_predictor'](torch.cat([h, z_t, actions[i], positions[i]], 1))
         x_pred = modules['decoder']([h_pred, skip])
         mse += mse_criterion(x_pred, x[i])
