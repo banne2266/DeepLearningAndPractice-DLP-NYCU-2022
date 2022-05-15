@@ -12,11 +12,14 @@ default_transform = transforms.Compose([
     ])
 
 class bair_robot_pushing_dataset(Dataset):
-    def __init__(self, args, mode='train', transform=default_transform, seq_len=20, image_size=64):
+    def __init__(self, args, mode='train', transform=default_transform, seq_len=20):
         assert mode == 'train' or mode == 'test' or mode == 'validate'
 
         self.data_root = args.data_root
         self.transform = transform
+        self.seq_len = seq_len
+        self.seed_is_set = False
+        self.d = 0
 
         if mode == 'train':
             self.data_dir = self.data_root + '/train'
@@ -32,13 +35,12 @@ class bair_robot_pushing_dataset(Dataset):
 
         for folder_1 in os.listdir(self.data_dir):
             path = self.data_dir + '/' + folder_1
+            if folder_1 == 'desktop.ini':
+                continue
             for folder_2 in os.listdir(path):
                 self.data_dirs.append(path + '/' + folder_2)
-        
         self.len = len(self.data_dirs)
-        self.seq_len = seq_len
-        self.seed_is_set = False
-        self.d = 0
+        
         
     def set_seed(self, seed):
         if not self.seed_is_set:
@@ -76,13 +78,9 @@ class bair_robot_pushing_dataset(Dataset):
     def __getitem__(self, index):
         self.set_seed(index)
         if self.ordered:
-            path = self.data_dirs[self.d]
-            if self.d == len(self.data_dirs) - 1:
-                self.d = 0
-            else:
-                self.d += 1
+            path = self.data_dirs[index]
         else:
-            path = self.data_dirs[np.random.randint(len(self.data_dirs))]
+            path = self.data_dirs[np.random.randint(self.len)]
 
         cond =  self.get_csv(path)
         seq = self.get_seq(path)

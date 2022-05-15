@@ -2,6 +2,9 @@
 *.png
 *.vscode
 
+# model weight
+*.pth
+
 lab3/*weight*
 lab3/*.exe
 lab3/score*
@@ -9,6 +12,8 @@ lab4-1/*.npz
 lab4-2/*.csv
 lab4-2/data/*
 lab4-2/*.pth
+lab5/logs/*
+lab5/data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
