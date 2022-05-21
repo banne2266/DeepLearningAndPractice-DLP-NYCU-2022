@@ -11,8 +11,11 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
+import matplotlib.pyplot as plt
+ewma_rewards = []
 
 class GaussianNoise:
     def __init__(self, dim, mu=None, std=None):
@@ -38,19 +41,32 @@ class ReplayMemory:
 
     def sample(self, batch_size, device):
         '''sample a batch of transition tensors'''
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        transitions = random.sample(self.buffer, batch_size)
+        return (torch.tensor(x, dtype=torch.float, device=device)
+                for x in zip(*transitions))
 
 
 class ActorNet(nn.Module):
     def __init__(self, state_dim=8, action_dim=2, hidden_dim=(400, 300)):
         super().__init__()
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        self.sequence = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim[0]),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(hidden_dim[0], hidden_dim[1]),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(hidden_dim[1], action_dim),
+            nn.Tanh()
+        )
 
     def forward(self, x):
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        x = torch.tensor(x, device="cuda")
+        y = self.sequence(x)
+        return y
 
 
 class CriticNet(nn.Module):
@@ -83,10 +99,9 @@ class DDPG:
         # initialize target network
         self._target_actor_net.load_state_dict(self._actor_net.state_dict())
         self._target_critic_net.load_state_dict(self._critic_net.state_dict())
-        ## TODO ##
-        # self._actor_opt = ?
-        # self._critic_opt = ?
-        raise NotImplementedError
+        ## TODO-v ##
+        self._actor_opt = optim.Adam(self._actor_net.parameters(), lr=args.lra)
+        self._critic_opt = optim.Adam(self._critic_net.parameters(), lr=args.lrc)
         # action noise
         self._action_noise = GaussianNoise(dim=2)
         # memory
@@ -100,8 +115,11 @@ class DDPG:
 
     def select_action(self, state, noise=True):
         '''based on the behavior (actor) network and exploration noise'''
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        action = self._actor_net(state).cpu().detach().numpy()
+        if noise:
+            action = action + self._action_noise.sample()
+        return action
 
     def append(self, state, action, reward, next_state, done):
         self._memory.append(state, action, [reward / 100], next_state,
@@ -126,15 +144,15 @@ class DDPG:
 
         ## update critic ##
         # critic loss
-        ## TODO ##
-        # q_value = ?
-        # with torch.no_grad():
-        #    a_next = ?
-        #    q_next = ?
-        #    q_target = ?
-        # criterion = ?
-        # critic_loss = criterion(q_value, q_target)
-        raise NotImplementedError
+        ## TODO-v ##
+        q_value = critic_net(state, action)
+        with torch.no_grad():
+            a_next = target_actor_net(next_state)
+            q_next = target_critic_net(next_state, a_next)
+            q_target = reward + gamma*q_next*(1-done)
+        criterion = nn.MSELoss()
+        critic_loss = criterion(q_value, q_target)
+
         # optimize critic
         actor_net.zero_grad()
         critic_net.zero_grad()
@@ -143,10 +161,9 @@ class DDPG:
 
         ## update actor ##
         # actor loss
-        ## TODO ##
-        # action = ?
-        # actor_loss = ?
-        raise NotImplementedError
+        ## TODO-v ##
+        action = actor_net(state)
+        actor_loss = -critic_net(state, action).mean()
         # optimize actor
         actor_net.zero_grad()
         critic_net.zero_grad()
@@ -157,8 +174,8 @@ class DDPG:
     def _update_target_network(target_net, net, tau):
         '''update target network by _soft_ copying from behavior network'''
         for target, behavior in zip(target_net.parameters(), net.parameters()):
-            ## TODO ##
-            raise NotImplementedError
+            ## TODO-v ##
+            target.data.copy_(tau*behavior.data + (1.0-tau)*target.data)
 
     def save(self, model_path, checkpoint=False):
         if checkpoint:
@@ -193,37 +210,45 @@ def train(args, env, agent, writer):
     print('Start Training')
     total_steps = 0
     ewma_reward = 0
-    for episode in range(args.episode):
-        total_reward = 0
-        state = env.reset()
-        for t in itertools.count(start=1):
-            # select action
-            if total_steps < args.warmup:
-                action = env.action_space.sample()
-            else:
-                action = agent.select_action(state)
-            # execute action
-            next_state, reward, done, _ = env.step(action)
-            # store transition
-            agent.append(state, action, reward, next_state, done)
-            if total_steps >= args.warmup:
-                agent.update()
+    best_reward = -99999
+    try:
+        for episode in range(args.episode):
+            total_reward = 0
+            state = env.reset()
+            for t in itertools.count(start=1):
+                # select action
+                if total_steps < args.warmup:
+                    action = env.action_space.sample()
+                else:
+                    action = agent.select_action(state)
+                # execute action
+                next_state, reward, done, _ = env.step(action)
+                # store transition
+                agent.append(state, action, reward, next_state, done)
+                if total_steps >= args.warmup:
+                    agent.update()
 
-            state = next_state
-            total_reward += reward
-            total_steps += 1
-            if done:
-                ewma_reward = 0.05 * total_reward + (1 - 0.05) * ewma_reward
-                writer.add_scalar('Train/Episode Reward', total_reward,
-                                  total_steps)
-                writer.add_scalar('Train/Ewma Reward', ewma_reward,
-                                  total_steps)
-                print(
-                    'Step: {}\tEpisode: {}\tLength: {:3d}\tTotal reward: {:.2f}\tEwma reward: {:.2f}'
-                    .format(total_steps, episode, t, total_reward,
-                            ewma_reward))
-                break
-    env.close()
+                state = next_state
+                total_reward += reward
+                total_steps += 1
+                if done:
+                    ewma_reward = 0.05 * total_reward + (1 - 0.05) * ewma_reward
+                    writer.add_scalar('Train/Episode Reward', total_reward,
+                                    total_steps)
+                    writer.add_scalar('Train/Ewma Reward', ewma_reward,
+                                    total_steps)
+                    print(
+                        'Step: {}\tEpisode: {}\tLength: {:3d}\tTotal reward: {:.2f}\tEwma reward: {:.2f}'
+                        .format(total_steps, episode, t, total_reward,
+                                ewma_reward))
+                    ewma_rewards.append(ewma_reward)
+                    break
+            if total_reward > best_reward and total_steps > args.warmup:
+                print("Best score update:")
+                agent.save("ddpg_best.pth")
+                best_reward = total_reward
+    finally:
+        env.close()
 
 
 def test(args, env, agent, writer):
@@ -234,12 +259,20 @@ def test(args, env, agent, writer):
         total_reward = 0
         env.seed(seed)
         state = env.reset()
-        ## TODO ##
-        # ...
-        #     if done:
-        #         writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
-        #         ...
-        raise NotImplementedError
+        with torch.no_grad():
+            done = 0
+            while not done:
+                action = agent.select_action(state, noise=False)
+                next_state, reward, done, _ = env.step(action)
+                
+                state = next_state
+                total_reward += reward
+
+                if done:
+                    writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
+                    rewards.append(total_reward)
+                    break
+        print(total_reward)
     print('Average Reward', np.mean(rewards))
     env.close()
 
@@ -270,8 +303,15 @@ def main():
     agent = DDPG(args)
     writer = SummaryWriter(args.logdir)
     if not args.test_only:
-        train(args, env, agent, writer)
-        agent.save(args.model)
+        try:
+            train(args, env, agent, writer)
+        finally:
+            plt.plot(ewma_rewards, label="ewma reward")
+            plt.xlabel("Episode")
+            plt.ylabel("Scores")
+            plt.legend()
+            plt.show()
+            agent.save(args.model)
     agent.load(args.model)
     test(args, env, agent, writer)
 

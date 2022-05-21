@@ -2,6 +2,7 @@
 __author__ = 'chengscott'
 __copyright__ = 'Copyright 2020, NCTU CGI Lab'
 import argparse
+from cProfile import label
 from collections import deque
 import itertools
 import random
@@ -11,8 +12,11 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
+import matplotlib.pyplot as plt
+ewma_rewards = []
 
 class ReplayMemory:
     __slots__ = ['buffer']
@@ -37,12 +41,22 @@ class ReplayMemory:
 class Net(nn.Module):
     def __init__(self, state_dim=8, action_dim=4, hidden_dim=32):
         super().__init__()
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        self.sequence = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(inplace=True),
+
+            nn.Linear(hidden_dim, action_dim),
+        )
 
     def forward(self, x):
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        x = torch.tensor(x, device="cuda")
+        y = self.sequence(x)
+        return y
 
 
 class DQN:
@@ -51,9 +65,9 @@ class DQN:
         self._target_net = Net().to(args.device)
         # initialize target network
         self._target_net.load_state_dict(self._behavior_net.state_dict())
-        ## TODO ##
+        ## TODO-v ##
         # self._optimizer = ?
-        raise NotImplementedError
+        self._optimizer = optim.Adam(self._behavior_net.parameters(), lr=args.lr)
         # memory
         self._memory = ReplayMemory(capacity=args.capacity)
 
@@ -66,8 +80,13 @@ class DQN:
 
     def select_action(self, state, epsilon, action_space):
         '''epsilon-greedy based on behavior network'''
-         ## TODO ##
-        raise NotImplementedError
+         ## TODO-v ##
+        if random.random() < epsilon:
+            return random.randint(0, 3)
+        else:
+            v = self._behavior_net(state)
+            _, action = torch.max(v, 0)
+            return action.item()
 
     def append(self, state, action, reward, next_state, done):
         self._memory.append(state, [action], [reward / 10], next_state,
@@ -85,23 +104,36 @@ class DQN:
             self.batch_size, self.device)
 
         ## TODO ##
+        q_value = self._behavior_net(state).gather(1, action.long())
+        #print(q_value.shape)
+        with torch.no_grad():
+            q_next = self._target_net(next_state)
+            q_next, idx = torch.max(q_next, 1)
+            q_next = q_next.unsqueeze(1)
+            q_target = reward + gamma * q_next * (1 - done)
+        criterion = nn.MSELoss()
+        loss = criterion(q_value, q_target)
         # q_value = ?
         # with torch.no_grad():
         #    q_next = ?
         #    q_target = ?
         # criterion = ?
         # loss = criterion(q_value, q_target)
-        raise NotImplementedError
+
+        #raise NotImplementedError
+
         # optimize
         self._optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self._behavior_net.parameters(), 5)
         self._optimizer.step()
 
-    def _update_target_network(self):
+    def _update_target_network(self, tau=0.001):
         '''update target network by copying from behavior network'''
-        ## TODO ##
-        raise NotImplementedError
+        ## TODO-v ##
+        self._target_net.load_state_dict(self._behavior_net.state_dict())
+        '''for target_param, behavior_param in zip(self._target_net.parameters(), self._behavior_net.parameters()):
+            target_param.data.copy_(tau*behavior_param.data + (1.0-tau)*target_param.data)'''
 
     def save(self, model_path, checkpoint=False):
         if checkpoint:
@@ -129,38 +161,48 @@ def train(args, env, agent, writer):
     action_space = env.action_space
     total_steps, epsilon = 0, 1.
     ewma_reward = 0
-    for episode in range(args.episode):
-        total_reward = 0
-        state = env.reset()
-        for t in itertools.count(start=1):
-            # select action
-            if total_steps < args.warmup:
-                action = action_space.sample()
-            else:
-                action = agent.select_action(state, epsilon, action_space)
-                epsilon = max(epsilon * args.eps_decay, args.eps_min)
-            # execute action
-            next_state, reward, done, _ = env.step(action)
-            # store transition
-            agent.append(state, action, reward, next_state, done)
-            if total_steps >= args.warmup:
-                agent.update(total_steps)
+    best_reward = -99999
+    try:
+        for episode in range(args.episode):
+            total_reward = 0
+            state = env.reset()
+            for t in itertools.count(start=1):
+                # select action
+                if total_steps < args.warmup:
+                    action = action_space.sample()
+                else:
+                    action = agent.select_action(state, epsilon, action_space)
+                    epsilon = max(epsilon * args.eps_decay, args.eps_min)
+                # execute action
+                next_state, reward, done, _ = env.step(action)
+                # store transition
+                agent.append(state, action, reward, next_state, done)
+                if total_steps >= args.warmup:
+                    agent.update(total_steps)
 
-            state = next_state
-            total_reward += reward
-            total_steps += 1
-            if done:
-                ewma_reward = 0.05 * total_reward + (1 - 0.05) * ewma_reward
-                writer.add_scalar('Train/Episode Reward', total_reward,
-                                  total_steps)
-                writer.add_scalar('Train/Ewma Reward', ewma_reward,
-                                  total_steps)
-                print(
-                    'Step: {}\tEpisode: {}\tLength: {:3d}\tTotal reward: {:.2f}\tEwma reward: {:.2f}\tEpsilon: {:.3f}'
-                    .format(total_steps, episode, t, total_reward, ewma_reward,
-                            epsilon))
-                break
-    env.close()
+                state = next_state
+                total_reward += reward
+                total_steps += 1
+                if done:
+                    ewma_reward = 0.05 * total_reward + (1 - 0.05) * ewma_reward
+                    writer.add_scalar('Train/Episode Reward', total_reward,
+                                    total_steps)
+                    writer.add_scalar('Train/Ewma Reward', ewma_reward,
+                                    total_steps)
+                    print(
+                        'Step: {}\tEpisode: {}\tLength: {:3d}\tTotal reward: {:.2f}\tEwma reward: {:.2f}\tEpsilon: {:.3f}'
+                        .format(total_steps, episode, t, total_reward, ewma_reward,
+                                epsilon))
+                    ewma_rewards.append(ewma_reward)
+                    break
+            if total_reward > best_reward and total_steps > args.warmup:
+                print("Best score update:")
+                agent.save("dqn_best.pth")
+                best_reward = total_reward
+    finally:
+        #print(ewma_rewards)
+        env.close()
+
 
 
 def test(args, env, agent, writer):
@@ -173,12 +215,24 @@ def test(args, env, agent, writer):
         total_reward = 0
         env.seed(seed)
         state = env.reset()
-        ## TODO ##
+        with torch.no_grad():
+            done = 0
+            while not done:
+                action = agent.select_action(state, epsilon, action_space)
+                next_state, reward, done, _ = env.step(action)
+                state = next_state
+                total_reward += reward
+
+                if done:
+                    writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
+                    rewards.append(total_reward)
+                    break
+        ## TODO-v ##
         # ...
         #     if done:
         #         writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
         #         ...
-        raise NotImplementedError
+        print(total_reward)
     print('Average Reward', np.mean(rewards))
     env.close()
 
@@ -212,10 +266,18 @@ def main():
     agent = DQN(args)
     writer = SummaryWriter(args.logdir)
     if not args.test_only:
-        train(args, env, agent, writer)
-        agent.save(args.model)
+        try:
+            train(args, env, agent, writer)
+        finally:
+            plt.plot(ewma_rewards, label="ewma reward")
+            plt.xlabel("Episode")
+            plt.ylabel("Scores")
+            plt.legend()
+            plt.show()
+            agent.save(args.model)
     agent.load(args.model)
     test(args, env, agent, writer)
+        
 
 
 if __name__ == '__main__':
