@@ -106,9 +106,9 @@ class DQN:
         ## TODO-v ##
         q_value = self._behavior_net(state).gather(1, action.long())
         with torch.no_grad():
-            q_next = self._target_net(next_state)
-            q_next, idx = torch.max(q_next, 1)
-            q_next = q_next.unsqueeze(1)
+            q_next_value = self._behavior_net(next_state)
+            next_action = torch.max(q_next_value, 1)[1].unsqueeze(1)
+            q_next = self._target_net(next_state).gather(1, next_action)
             q_target = reward + gamma * q_next * (1 - done)
         criterion = nn.MSELoss()
         loss = criterion(q_value, q_target)
@@ -196,7 +196,7 @@ def train(args, env, agent, writer):
                     break
             if total_reward > best_reward and total_steps > args.warmup:
                 print("Best score update:")
-                agent.save("dqn_best.pth")
+                agent.save("ddqn_best.pth")
                 best_reward = total_reward
     finally:
         #print(ewma_rewards)
@@ -240,8 +240,8 @@ def main():
     ## arguments ##
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-d', '--device', default='cuda')
-    parser.add_argument('-m', '--model', default='dqn.pth')
-    parser.add_argument('--logdir', default='log/dqn')
+    parser.add_argument('-m', '--model', default='ddqn.pth')
+    parser.add_argument('--logdir', default='log/ddqn')
     # train
     parser.add_argument('--warmup', default=10000, type=int)
     parser.add_argument('--episode', default=1200, type=int)

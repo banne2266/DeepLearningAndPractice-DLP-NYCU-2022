@@ -116,7 +116,7 @@ class DDPG:
     def select_action(self, state, noise=True):
         '''based on the behavior (actor) network and exploration noise'''
         ## TODO-v ##
-        action = self._actor_net(state).cpu().detach().numpy()
+        action = self._actor_net(state).detach().cpu().numpy()
         if noise:
             action = action + self._action_noise.sample()
         return action
