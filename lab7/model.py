@@ -110,8 +110,8 @@ class Discriminator_ACGAN(nn.Module):
             self.discriminate_net.add_module(name, layer)
 
         self.conv_5 = nn.Sequential(
-            nn.Conv2d(512, 128, kernel_size = (4,4), stride = (1,1)),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(512, 512, kernel_size = (4,4), stride = (1,1)),
+            nn.BatchNorm2d(512),
             nn.LeakyReLU()
         )
 
@@ -119,18 +119,18 @@ class Discriminator_ACGAN(nn.Module):
 
         if is_wgan:
             self.a_net = nn.Sequential(
-                nn.Linear(128, 1)
+                nn.Linear(512, 1)
             )
             self.c_net = nn.Sequential(
-                nn.Linear(128, 24)
+                nn.Linear(512, 24)
             )
         else:
             self.a_net = nn.Sequential(
-                nn.Linear(128, 1),
+                nn.Linear(512, 1),
                 nn.Sigmoid()
             )
             self.c_net = nn.Sequential(
-                nn.Linear(128, 24),
+                nn.Linear(512, 24),
                 nn.Sigmoid()
             )
     
